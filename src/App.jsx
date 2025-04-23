@@ -1,68 +1,103 @@
-import { useState, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
-import { Sun, Moon } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { useEffect } from 'react';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { setUser } from './store/userSlice';
+
+import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+
 import Home from './pages/Home';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Dashboard from './pages/Dashboard';
+import TaskList from './pages/TaskList';
+import UserProfile from './pages/UserProfile';
 import NotFound from './pages/NotFound';
 
 function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    const savedMode = localStorage.getItem('darkMode');
-    return savedMode ? JSON.parse(savedMode) : 
-      window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useSelector((state) => state.user);
 
+  // Check for existing user session on application startup
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
-  }, [darkMode]);
+    // Check if Apper SDK is loaded and user is logged in
+    const checkAuthStatus = () => {
+      if (window.ApperSDK) {
+        const { ApperClient } = window.ApperSDK;
+        
+        // If there's a logged in user in ApperSDK, it will automatically
+        // restore the session from cookies/local storage
+        if (ApperClient.isLoggedIn) {
+          // The SDK handles authentication tokens automatically
+          // Set the user in Redux state from localStorage or sessionStorage
+          const storedUser = localStorage.getItem('apperUser');
+          if (storedUser) {
+            try {
+              const user = JSON.parse(storedUser);
+              dispatch(setUser(user));
+            } catch (error) {
+              console.error('Error parsing stored user:', error);
+            }
+          }
+        }
+      }
+    };
 
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-  };
+    // If SDK is already loaded, check auth status
+    if (window.ApperSDK) {
+      checkAuthStatus();
+    } else {
+      // If SDK is not yet loaded, wait for it
+      const sdkInterval = setInterval(() => {
+        if (window.ApperSDK) {
+          checkAuthStatus();
+          clearInterval(sdkInterval);
+        }
+      }, 100);
+
+      // Clean up interval if component unmounts
+      return () => clearInterval(sdkInterval);
+    }
+  }, [dispatch]);
 
   return (
-    <div className="min-h-screen bg-surface-50 dark:bg-surface-900 transition-colors duration-300">
-      <header className="sticky top-0 z-10 bg-white/80 dark:bg-surface-800/80 backdrop-blur-md border-b border-surface-200 dark:border-surface-700">
-        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <motion.div 
-              initial={{ rotate: -10 }}
-              animate={{ rotate: 0 }}
-              className="text-primary font-bold text-2xl"
-            >
-              TaskTide
-            </motion.div>
-          </div>
-          
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={toggleDarkMode}
-            className="p-2 rounded-full bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 transition-colors"
-            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </motion.button>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-6">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </main>
-
-      <footer className="border-t border-surface-200 dark:border-surface-800 py-6 mt-12">
-        <div className="container mx-auto px-4 text-center text-surface-500 dark:text-surface-400 text-sm">
-          © {new Date().getFullYear()} TaskTide. All rights reserved.
-        </div>
-      </footer>
-    </div>
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        <Route index element={<Home />} />
+        
+        {/* Protected Routes */}
+        <Route path="dashboard" element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="tasks" element={
+          <ProtectedRoute>
+            <TaskList />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="profile" element={
+          <ProtectedRoute>
+            <UserProfile />
+          </ProtectedRoute>
+        } />
+        
+        {/* Auth Routes */}
+        <Route path="login" element={
+          isAuthenticated ? <Navigate to="/" replace /> : <Login />
+        } />
+        
+        <Route path="signup" element={
+          isAuthenticated ? <Navigate to="/" replace /> : <Signup />
+        } />
+        
+        {/* 404 Route */}
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
   );
 }
 
